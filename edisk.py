@@ -82,7 +82,12 @@ class EdiskNotFoundError(EdiskOperationError):
             self.message = path + " not found"
 
 class EdiskAlreadyExistsError(EdiskOperationError):
-    pass
+     def __init__(self,path, message=None):
+        self.path = path
+        if message is not None:
+            self.message = message
+        else:
+            self.message = path + " already exists"
 
 class EdiskInvalidParamsError(EdiskOperationError):
     pass
@@ -98,8 +103,7 @@ def get_storage(session,size):
     rsp = session.get("http://edisk.ukr.net/api.php", params = params)
     items = rsp.text.split("#")
     if len(items) != 2:
-        print "Could not get storage"
-        return None
+        raise EdiskOperationError("Could not get storage")
     else:
         print "Got {} bytes at {}#{}".format(size, items[0],items[1])
         return items[0], items[1]
@@ -187,13 +191,21 @@ def make_dir(session,path,cwd=0):
             try:
                 parent_folder_path = "/".join(path_list)
                 parent_node_meta = get_node_info(session,parent_folder_path, dir)
-                if parent_node_meta["node_type"] != "dir":
-                    raise EdiskInvalidParamsError(parent_folder_path + " is a directory")
-                parent_node = parent_node_meta["node"]
-                break
             except EdiskNotFoundError as e:
                 print e
                 make_dir(session,e.path,dir)
+                continue
+                
+            if parent_node_meta["node_type"] != "dir":
+                raise EdiskInvalidParamsError(parent_folder_path + " is a directory")
+            parent_node = parent_node_meta["node"]
+            
+            try:
+                get_node_info(session,filename,parent_node)
+            except EdiskNotFoundError as e:
+                break
+            else:
+                raise EdiskAlreadyExistsError(path)
                 
     params = {"do":"MakeFolder", "parent": parent_node, "name" : filename}
     rsp = session.get("http://edisk.ukr.net/api.php", params = params)
@@ -201,8 +213,8 @@ def make_dir(session,path,cwd=0):
     check_auth_err_or_raise(data)
     if data["status"][0]["message"] == "FOLDER_CREATED":
         print path + " created"
-    elif data["status"][0]["message"] == "FOLDER_EXISTS":
-        raise EdiskAlreadyExistsError(path + " already exists")
+    else:
+        raise EdiskOperationError("Could not create {} due to server error".format(path))
         
 
 def download(session,node_info,local_path):
@@ -296,7 +308,7 @@ def command(session,cmd,args=[],current_dir=0):
             else:
                 print "had enough"
                 return -1
-        except EdiskOperationError as e:
+        except (EdiskOperationError, IOError, OSError) as e:
             print ("Operation failed: " + str(e))
             return -1
 
