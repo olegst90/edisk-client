@@ -64,10 +64,10 @@ def login(session,relogin=False):
     return True
 
 
-class EdiskAuthError:
+class EdiskAuthError(Exception):
     pass
 
-class EdiskOperationError:
+class EdiskOperationError(Exception):
     def __init__(self, message):
         self.message = message
     def __str__(self)    :
@@ -120,7 +120,7 @@ def get_node_info(session, path, cwd = 0):
         path_list.remove('')
 
     if len(path_list) == 0:
-        return {"node":0, "node_type": "dir", "name":"root","created":0}
+        return {"node":0, "parent_node": 0, "node_type": "dir", "name":"root","created":0}
 
     for item in path_list[:-1]:
         params = {"do" : "Entries", "folder" : dir}
@@ -146,7 +146,7 @@ def get_node_info(session, path, cwd = 0):
     for entry_name, entry_meta in entries.items():
         if entry_meta["name"] == path_list[-1]:
             res = entry_meta
-            res.update({"node": entry_name[1:], "node_type": "file" if "size" in entry_meta else "dir"})
+            res.update({"node": entry_name[1:], "parent_node": dir, "node_type": "file" if "size" in entry_meta else "dir"})
             return res
 
     raise EdiskNotFoundError(path)
@@ -164,7 +164,7 @@ def list_entries(session,folder_node):
 
     for entry_name, entry_meta in entries.items():
         res = entry_meta
-        res.update({"node": entry_name[1:], "node_type": "file" if "size" in entry_meta else "dir"})
+        res.update({"node": entry_name[1:], "parent_node":folder_node, "node_type": "file" if "size" in entry_meta else "dir"})
         yield res
 
 def make_dir(session,path,cwd=0):
@@ -194,18 +194,20 @@ def make_dir(session,path,cwd=0):
             except EdiskNotFoundError as e:
                 print e
                 make_dir(session,e.path,dir)
-                continue
+            else:
+                break
                 
-            if parent_node_meta["node_type"] != "dir":
-                raise EdiskInvalidParamsError(parent_folder_path + " is a directory")
+        if parent_node_meta["node_type"] != "dir":
+            raise EdiskInvalidParamsError(parent_folder_path + " is not a directory")
+        else:
             parent_node = parent_node_meta["node"]
             
-            try:
-                get_node_info(session,filename,parent_node)
-            except EdiskNotFoundError as e:
-                break
-            else:
-                raise EdiskAlreadyExistsError(path)
+    try:
+        get_node_info(session,filename,parent_node)
+    except EdiskNotFoundError as e:
+        pass
+    else:
+        raise EdiskAlreadyExistsError(path)
                 
     params = {"do":"MakeFolder", "parent": parent_node, "name" : filename}
     rsp = session.get("http://edisk.ukr.net/api.php", params = params)
@@ -308,7 +310,12 @@ def command(session,cmd,args=[],current_dir=0):
             else:
                 print "had enough"
                 return -1
-        except (EdiskOperationError, IOError, OSError) as e:
+        except (EdiskOperationError,
+                EdiskNotFoundError,
+                EdiskAlreadyExistsError,
+                EdiskInvalidParamsError,
+                IOError,
+                OSError) as e:
             print ("Operation failed: " + str(e))
             return -1
 
