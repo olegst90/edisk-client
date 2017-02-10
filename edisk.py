@@ -23,9 +23,11 @@ import readline
 import getpass
 import hashlib
 
-credfile=".edisk.cred"
-
 def login(session,relogin=False):
+    credpath = os.path.expanduser('~') + "/.edisk";
+    if not os.path.exists(credpath):
+        os.mkdir(credpath)
+    credfile=credpath + "/.edisk.cred"
     if relogin is False:
         try:
             file = open(credfile,"r")

@@ -20,11 +20,14 @@ import json
 import sys
 import os
 
-credfile = ".dbox.cred"
 app_key = 'eyrfiy0gctt906b'
 app_secret = 'xwqcb222j85rjm1'
 
 def login():
+    credpath = os.path.expanduser('~') + "/.dbox"
+    if not os.path.exists(credpath):
+        os.mkdir(credpath)
+    credfile = credpath + "/.dbox.cred"
     try:
         file = open(credfile,"r");
         cred = json.load(file);
@@ -91,6 +94,6 @@ try:
     else:
         help()
         exit(-1)
-except dropbox.rest.ErrorResponse, IOError as e:
+except (dropbox.rest.ErrorResponse, IOError) as e:
     print ("Operation failed: " + str(e))
     exit(-1)
